@@ -12,6 +12,8 @@ from matplotlib import pyplot as plt
 from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_curve, auc
 from tqdm import tqdm
 
+from transformers import get_linear_schedule_with_warmup
+
 
 def compute_loss(batch_pred, batch_true, device=torch.device('cuda:0')):
     return nn.CrossEntropyLoss()(batch_pred, batch_true.to(device))
@@ -132,7 +134,7 @@ def format_time(elapsed):
     return str(datetime.timedelta(seconds=elapsed_rounded))
 
 
-def train_bert(model, optimizer, train_dataloader, val_dataloader, device=torch.device('cuda:0'), n_epochs=1):
+def train_bert(model, optimizer, train_dataloader, val_dataloader, device=torch.device('cuda:0'), n_epochs=1, use_scheduler=False):
     seed_val = 42
     random.seed(seed_val)
     np.random.seed(seed_val)
@@ -140,6 +142,13 @@ def train_bert(model, optimizer, train_dataloader, val_dataloader, device=torch.
     torch.cuda.manual_seed_all(seed_val)
 
     metrics = {'train_loss': [], 'val_loss': [], 'val_accuracy': []}
+
+    scheduler = None
+    if use_scheduler:
+        total_steps = len(train_dataloader) * n_epochs
+        scheduler = get_linear_schedule_with_warmup(optimizer,
+                                                    num_warmup_steps=0.1 * total_steps,
+                                                    num_training_steps=total_steps)
 
     total_t0 = time.time()
 
@@ -174,6 +183,9 @@ def train_bert(model, optimizer, train_dataloader, val_dataloader, device=torch.
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), 10)
             optimizer.step()
+
+            if use_scheduler:
+                scheduler.step()
 
         avg_train_loss = total_train_loss / len(train_dataloader)
 
